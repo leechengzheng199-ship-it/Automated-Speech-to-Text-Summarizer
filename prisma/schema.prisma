@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id             String   @id @default("default")
+  qiniuAccessKey String   @default("")
+  qiniuSecretKey String   @default("")
+  qiniuBucket    String   @default("")
+  qiniuDomain    String   @default("")
+  qiniuRegion    String   @default("z0")
+  qiniuIsPrivate Boolean  @default(false)
+  llmBaseUrl     String   @default("")
+  llmApiKey      String   @default("")
+  llmModel       String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Template {
+  id             String    @id @default(cuid())
+  name           String
+  description    String    @default("")
+  systemPrompt   String
+  outputLanguage String    @default("zh")
+  sections       String
+  isBuiltin      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  summaries      Summary[]
+}
+
+model Job {
+  id           String      @id @default(cuid())
+  fileName     String
+  fileSize     Int
+  durationMs   Int?
+  kodoKey      String?
+  audioUrl     String?
+  qiniuTaskId  String?
+  status       String      @default("queued")
+  errorMessage String?
+  templateId   String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  transcript   Transcript?
+  summary      Summary?
+}
+
+model Transcript {
+  id         String   @id @default(cuid())
+  jobId      String   @unique
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resultText String
+  detail     String   @default("[]")
+  durationMs Int?
+  createdAt  DateTime @default(now())
+}
+
+model Summary {
+  id               String    @id @default(cuid())
+  jobId            String    @unique
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  templateId       String?
+  template         Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateSnapshot String
+  markdown         String
+  rawOutput        String    @default("")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
