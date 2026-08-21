@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { JobProgress } from "@/components/job-progress";
 import { Separator } from "@/components/ui/separator";
 import type { JobStatus } from "@/lib/types";
 
@@ -106,34 +107,46 @@ export function JobDetail({ jobId }: { jobId: string }) {
       <Card>
         <CardHeader>
           <CardTitle>处理进度</CardTitle>
-          <CardDescription>uploaded → transcribing → summarizing → done</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>文件大小：{(job.fileSize / (1024 * 1024)).toFixed(2)} MB</p>
-          <p>七牛 key：{job.kodoKey || "尚未上传"}</p>
-          <p className="break-all">音频外链：{job.audioUrl || "尚未生成"}</p>
-          <p>Paraformer 任务 ID：{job.asrTaskId || "尚未提交"}</p>
-          {job.errorMessage ? <p className="text-destructive">{job.errorMessage}</p> : null}
-          {error ? <p className="text-destructive">{error}</p> : null}
+        <CardContent className="space-y-5">
+          <JobProgress
+            status={status}
+            hasTranscript={Boolean(job.transcript)}
+          />
+          <p className="text-center text-sm text-muted-foreground">
+            {(job.fileSize / (1024 * 1024)).toFixed(2)} MB
+          </p>
+          {job.errorMessage ? <p className="text-center text-sm text-destructive">{job.errorMessage}</p> : null}
+          {error ? <p className="text-center text-sm text-destructive">{error}</p> : null}
           {status === "failed" && job.kodoKey ? (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                setError("");
-                const response = await fetch(`/api/jobs/${jobId}/retry`, { method: "POST" });
-                if (!response.ok) {
-                  const data = (await response.json().catch(() => ({}))) as { error?: string };
-                  setError(data.error || "重新提交失败。");
-                  return;
-                }
-                const data = (await response.json()) as JobPayload;
-                setJob(data);
-                setPollKey((value) => value + 1);
-              }}
-            >
-              重新提交转写
-            </Button>
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setError("");
+                  const response = await fetch(`/api/jobs/${jobId}/retry`, { method: "POST" });
+                  if (!response.ok) {
+                    const data = (await response.json().catch(() => ({}))) as { error?: string };
+                    setError(data.error || "重新提交失败。");
+                    return;
+                  }
+                  const data = (await response.json()) as JobPayload;
+                  setJob(data);
+                  setPollKey((value) => value + 1);
+                }}
+              >
+                重新提交转写
+              </Button>
+            </div>
           ) : null}
+          <details className="text-sm text-muted-foreground">
+            <summary className="cursor-pointer select-none">技术信息</summary>
+            <div className="mt-2 space-y-1 break-all">
+              <p>七牛 key：{job.kodoKey || "尚未上传"}</p>
+              <p>音频外链：{job.audioUrl || "尚未生成"}</p>
+              <p>Paraformer 任务 ID：{job.asrTaskId || "尚未提交"}</p>
+            </div>
+          </details>
         </CardContent>
       </Card>
 

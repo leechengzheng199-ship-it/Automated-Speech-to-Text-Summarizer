@@ -12,8 +12,8 @@ import {
 
 export { getPrepareAction, needsLocalPrepare } from "@/lib/audio-strategy";
 
-export function needsTranscode(fileName: string) {
-  return needsLocalPrepare(fileName);
+export function needsTranscode(fileName: string, fileSize = 0) {
+  return needsLocalPrepare(fileName, fileSize);
 }
 
 const FFMPEG_SAFE_BYTES = 380 * 1024 * 1024;
@@ -64,9 +64,8 @@ async function loadFfmpeg() {
   return ffmpegLoader;
 }
 
-export function preloadFfmpeg(fileName: string) {
-  const action = getPrepareAction(fileName);
-  if (action === "compress" || (action === "extract" && !isIsoBmffContainer(fileName))) {
+export function preloadFfmpeg(fileName: string, fileSize = 0) {
+  if (getPrepareAction(fileName, fileSize) !== "direct") {
     void loadFfmpeg();
   }
 }
@@ -141,20 +140,20 @@ async function remuxAudioTrack(file: File, onLog?: (message: string) => void, on
 }
 
 async function compressToSpeechAac(file: File, onLog?: (message: string) => void, onProgress?: (ratio: number) => void) {
-  onLog?.("正在压缩为 16kHz 单声道 AAC…");
+  onLog?.("正在压缩为 16kHz 单声道 24kbps AAC…");
   try {
     return await runFfmpeg({
       file,
-      args: ["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "48k", "-movflags", "+faststart"],
+      args: ["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "24k", "-movflags", "+faststart"],
       outputName: "output.m4a",
       outputType: "audio/mp4",
       onProgress,
     });
   } catch {
-    onLog?.("正在压缩为 16kHz 单声道 mp3…");
+    onLog?.("正在压缩为 16kHz 单声道 24kbps mp3…");
     return runFfmpeg({
       file,
-      args: ["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "48k", "-compression_level", "7"],
+      args: ["-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "24k", "-compression_level", "7"],
       outputName: "output.mp3",
       outputType: "audio/mpeg",
       onProgress,
@@ -162,9 +161,8 @@ async function compressToSpeechAac(file: File, onLog?: (message: string) => void
   }
 }
 
-function tooPcmLike(file: File, durationMs: number | null) {
-  if (!durationMs || durationMs < 1000) return file.size > 40 * 1024 * 1024;
-  return file.size / (durationMs / 1000) > 40_000;
+function canRecompress(file: File) {
+  return file.size <= FFMPEG_SAFE_BYTES;
 }
 
 export async function prepareUploadFile(
@@ -173,7 +171,7 @@ export async function prepareUploadFile(
   onProgress?: (ratio: number) => void,
   durationMs?: number | null,
 ): Promise<File> {
-  const action: PrepareAction = getPrepareAction(file.name);
+  const action: PrepareAction = getPrepareAction(file.name, file.size, durationMs ?? null);
 
   if (action === "direct") {
     onProgress?.(1);
@@ -181,35 +179,35 @@ export async function prepareUploadFile(
   }
 
   try {
-    if (action === "extract" && isIsoBmffContainer(file.name)) {
-      onLog?.("正在从视频中提取音轨…");
-      const extracted = await extractAacFromMp4(file, onProgress);
-      if (extracted) {
-        if (tooPcmLike(extracted, durationMs ?? null)) {
-          return compressToSpeechAac(extracted, onLog, onProgress);
-        }
-        return extracted;
-      }
-    }
-
     if (action === "extract") {
-      try {
-        const remuxed = await remuxAudioTrack(file, onLog, onProgress);
-        if (tooPcmLike(remuxed, durationMs ?? null)) {
-          return compressToSpeechAac(remuxed, onLog, onProgress);
-        }
-        return remuxed;
-      } catch {
-        return compressToSpeechAac(file, onLog, onProgress);
+      let extracted: File | null = null;
+      if (isIsoBmffContainer(file.name)) {
+        onLog?.("正在从视频中提取音轨…");
+        extracted = await extractAacFromMp4(file, (ratio) => onProgress?.(ratio * 0.55));
       }
+      if (!extracted && canRecompress(file)) {
+        extracted = await remuxAudioTrack(file, onLog, (ratio) => onProgress?.(ratio * 0.55));
+      }
+      if (!extracted) {
+        throw new Error("无法从视频中提取音轨。");
+      }
+      if (canRecompress(extracted)) {
+        return compressToSpeechAac(extracted, onLog, (ratio) => onProgress?.(0.55 + ratio * 0.45));
+      }
+      onLog?.("音轨较大，已跳过二次压缩。");
+      onProgress?.(1);
+      return extracted;
     }
 
+    if (!canRecompress(file)) {
+      throw new Error("文件较大，浏览器无法在本地转码。");
+    }
     return compressToSpeechAac(file, onLog, onProgress);
   } catch (error) {
     throw new Error(
       error instanceof Error
-        ? `${error.message} 请先将文件转为 mp3/m4a 后再上传。`
-        : "转码失败，请先将文件转为 mp3/m4a 后再上传。",
+        ? `${error.message} 请先将文件转为较小的 mp3/m4a 后再上传。`
+        : "转码失败，请先将文件转为较小的 mp3/m4a 后再上传。",
     );
   }
 }

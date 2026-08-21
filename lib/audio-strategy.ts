@@ -8,24 +8,30 @@ export function getExtension(fileName: string) {
   return index >= 0 ? fileName.slice(index).toLowerCase() : "";
 }
 
-export function getPrepareAction(fileName: string): PrepareAction {
+export function shouldCompressAudio(fileSize: number, durationMs: number | null = null) {
+  if (fileSize > 20 * 1024 * 1024) return true;
+  if (durationMs && durationMs >= 1000) {
+    return fileSize / (durationMs / 1000) > 4000;
+  }
+  return false;
+}
+
+export function getPrepareAction(fileName: string, fileSize = 0, durationMs: number | null = null): PrepareAction {
   const ext = getExtension(fileName);
   if ((VIDEO_CONTAINER_EXTENSIONS as readonly string[]).includes(ext)) return "extract";
   if ((LOSSLESS_AUDIO_EXTENSIONS as readonly string[]).includes(ext)) return "compress";
+  if (shouldCompressAudio(fileSize, durationMs)) return "compress";
   return "direct";
 }
 
 export function predictedOutputName(fileName: string, action: PrepareAction) {
   if (action === "direct") return fileName;
   const base = fileName.replace(/\.[^.]+$/, "") || "audio";
-  const ext = getExtension(fileName);
-  if (action === "extract" && ext === ".webm") return `${base}.webm`;
-  if (action === "extract") return `${base}.aac`;
   return `${base}.m4a`;
 }
 
-export function needsLocalPrepare(fileName: string) {
-  return getPrepareAction(fileName) !== "direct";
+export function needsLocalPrepare(fileName: string, fileSize = 0, durationMs: number | null = null) {
+  return getPrepareAction(fileName, fileSize, durationMs) !== "direct";
 }
 
 export function isIsoBmffContainer(fileName: string) {

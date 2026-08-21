@@ -45,8 +45,8 @@ export function getUploadHost(region: string) {
 export function createUploadToken(settings: QiniuSettings, key: string) {
   const putPolicy = new qiniu.rs.PutPolicy({
     scope: `${settings.bucket}:${key}`,
-    expires: 3600,
-    fsizeLimit: QINIU_LIMITS.maxFileBytes,
+    expires: 4 * 3600,
+    fsizeLimit: QINIU_LIMITS.maxUploadBytes,
     returnBody: '{"key":$(key),"hash":$(etag),"size":$(fsize)}',
   });
   return putPolicy.uploadToken(mac(settings));

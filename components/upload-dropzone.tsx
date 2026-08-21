@@ -65,7 +65,7 @@ export function UploadDropzone({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const action = file ? getPrepareAction(file.name) : "direct";
+  const action = file ? getPrepareAction(file.name, file.size) : "direct";
   const issues = useMemo(() => {
     if (!file) return [];
     const messages: string[] = [];
@@ -77,8 +77,8 @@ export function UploadDropzone({
     ) {
       messages.push("当前扩展名不在支持列表中。");
     }
-    if (file.size > QINIU_LIMITS.maxFileBytes) {
-      messages.push(`文件超过 ${QINIU_LIMITS.maxFileLabel}。`);
+    if (file.size > QINIU_LIMITS.maxSourceBytes) {
+      messages.push(`文件超过 ${QINIU_LIMITS.maxSourceLabel}。`);
     }
     return messages;
   }, [file]);
@@ -90,7 +90,7 @@ export function UploadDropzone({
     setError("");
     setMessage("");
     setProgress(0);
-    if (next) preloadFfmpeg(next.name);
+    if (next) preloadFfmpeg(next.name, next.size);
   }
 
   async function onStart() {
@@ -119,8 +119,8 @@ export function UploadDropzone({
       const token =
         uploadFile.name === predictedName ? tokenBody : await fetchUploadToken(uploadFile.name);
 
-      if (uploadFile.size > QINIU_LIMITS.maxFileBytes) {
-        throw new Error(`处理后的文件仍超过 ${QINIU_LIMITS.maxFileLabel} 限制。`);
+      if (uploadFile.size > QINIU_LIMITS.maxUploadBytes) {
+        throw new Error(`处理后的文件仍超过 ${QINIU_LIMITS.maxUploadLabel} 限制。`);
       }
 
       setMessage("正在上传到七牛云…");
@@ -159,7 +159,7 @@ export function UploadDropzone({
       <CardHeader>
         <CardTitle>上传录音</CardTitle>
         <CardDescription>
-          选择本地音频或视频。视频会先抽出音轨再上传，无损音频会压成 AAC；mp3 / m4a 等可直接传。
+          选择本地音频或视频。视频会抽出音轨，再压成 16kHz 单声道 24kbps 语音后再上传。
           {!qiniuConfigured ? " 请先到设置页填写七牛云配置。" : null}
           {qiniuConfigured && !dashscopeConfigured ? " 请先到设置页填写阿里云百炼 API Key。" : null}
           {qiniuConfigured && dashscopeConfigured && !llmConfigured
@@ -180,7 +180,7 @@ export function UploadDropzone({
           <div>
             <p className="font-medium">点击选择或拖放音频文件</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              支持 mp3 / wav / ogg / mp4 / m4a / webm 等。上限 {QINIU_LIMITS.maxFileLabel}、
+              支持 mp3 / wav / ogg / mp4 / m4a / webm 等。源文件上限 {QINIU_LIMITS.maxSourceLabel}、
               {QINIU_LIMITS.maxDurationLabel}。
             </p>
           </div>

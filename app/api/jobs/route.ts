@@ -46,8 +46,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "缺少 fileName、fileSize 或 kodoKey。" }, { status: 400 });
   }
 
-  if (body.fileSize > QINIU_LIMITS.maxFileBytes) {
-    return NextResponse.json({ error: `文件超过 ${QINIU_LIMITS.maxFileLabel} 限制。` }, { status: 400 });
+  if (body.fileSize > QINIU_LIMITS.maxUploadBytes) {
+    return NextResponse.json({ error: `处理后的文件超过 ${QINIU_LIMITS.maxUploadLabel} 限制。` }, { status: 400 });
   }
 
   if (body.durationMs && body.durationMs > QINIU_LIMITS.maxDurationMs) {

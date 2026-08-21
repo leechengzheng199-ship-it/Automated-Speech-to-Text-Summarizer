@@ -39,9 +39,11 @@ export const QINIU_UPLOAD_HOSTS: Record<string, string> = {
 };
 
 export const QINIU_LIMITS = {
-  maxFileBytes: 2 * 1024 * 1024 * 1024 - 1,
+  maxSourceBytes: 10 * 1024 * 1024 * 1024,
+  maxSourceLabel: "10GB",
+  maxUploadBytes: 2 * 1024 * 1024 * 1024 - 1,
+  maxUploadLabel: "2GB",
   maxDurationMs: 12 * 60 * 60 * 1000,
-  maxFileLabel: "2GB",
   maxDurationLabel: "12 小时",
   supportedExtensions: [".wav", ".ogg", ".mp3", ".mp4", ".m4a", ".webm", ".aac", ".flac"],
 } as const;

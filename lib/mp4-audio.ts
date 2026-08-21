@@ -1,6 +1,6 @@
 import { createFile } from "mp4box";
 
-const CHUNK_BYTES = 2 * 1024 * 1024;
+const CHUNK_BYTES = 8 * 1024 * 1024;
 const SAMPLE_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
 
 function tagBuffer(buffer: ArrayBuffer, fileStart: number) {
@@ -86,7 +86,7 @@ export async function extractAacFromMp4(
 
   let offset = 0;
   let steps = 0;
-  while (offset < file.size && steps < 10_000 && codecSupported !== false) {
+  while (offset < file.size && steps < 100_000 && codecSupported !== false) {
     const end = Math.min(offset + CHUNK_BYTES, file.size);
     const buffer = tagBuffer(await file.slice(offset, end).arrayBuffer(), offset);
     const next = mp4.appendBuffer(buffer as never);
