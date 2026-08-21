@@ -1,4 +1,10 @@
-import type { TemplateSection } from "@/lib/types";
+import type { SectionFormat, TemplateSection } from "@/lib/types";
+
+export const SECTION_FORMATS: Array<{ value: SectionFormat; label: string }> = [
+  { value: "paragraph", label: "段落" },
+  { value: "bullets", label: "列表" },
+  { value: "table", label: "表格" },
+];
 
 export const BUILTIN_TEMPLATES: Array<{
   name: string;
@@ -133,4 +139,91 @@ export function buildSummaryPrompt(params: {
     system: params.systemPrompt,
     user: `请根据下面的转写原文，按以下结构输出完整 Markdown 文档。不要输出结构之外的前言或结语。\n\n${outline}\n\n---\n转写原文：\n${params.transcript}`,
   };
+}
+
+export type TemplateInput = {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  outputLanguage: string;
+  sections: TemplateSection[];
+};
+
+function asFormat(value: unknown): SectionFormat {
+  return value === "table" || value === "bullets" ? value : "paragraph";
+}
+
+export function newSection(partial?: Partial<TemplateSection>): TemplateSection {
+  return {
+    id: partial?.id?.trim() || crypto.randomUUID(),
+    title: partial?.title?.trim() || "未命名章节",
+    instruction: partial?.instruction?.trim() || "根据转写原文归纳这一部分。",
+    format: asFormat(partial?.format),
+  };
+}
+
+export function defaultNewTemplate(): TemplateInput {
+  return {
+    name: "未命名模板",
+    description: "",
+    systemPrompt:
+      "你是总结助手。只依据转写原文归纳，不编造未出现的事实。用简体中文输出 Markdown，严格按给定章节标题组织，不要额外添加章节。",
+    outputLanguage: "zh",
+    sections: [
+      {
+        id: "summary",
+        title: "要点总结",
+        instruction: "归纳录音中最重要的信息，不要遗漏明确的结论、数字与待办。",
+        format: "paragraph",
+      },
+    ],
+  };
+}
+
+export function parseTemplateInput(body: unknown): TemplateInput {
+  if (!body || typeof body !== "object") {
+    throw new Error("无效的模板数据。");
+  }
+  const data = body as Record<string, unknown>;
+  const name = typeof data.name === "string" ? data.name.trim() : "";
+  if (!name) throw new Error("请填写模板名称。");
+
+  const systemPrompt = typeof data.systemPrompt === "string" ? data.systemPrompt.trim() : "";
+  if (!systemPrompt) throw new Error("请填写总体要求。");
+
+  if (!Array.isArray(data.sections) || data.sections.length === 0) {
+    throw new Error("至少需要一个总结章节。");
+  }
+
+  const sections = data.sections.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`第 ${index + 1} 个章节无效。`);
+    }
+    const section = item as Record<string, unknown>;
+    const title = typeof section.title === "string" ? section.title.trim() : "";
+    const instruction = typeof section.instruction === "string" ? section.instruction.trim() : "";
+    if (!title) throw new Error(`第 ${index + 1} 个章节缺少标题。`);
+    if (!instruction) throw new Error(`第 ${index + 1} 个章节缺少抽取说明。`);
+    return {
+      id: typeof section.id === "string" && section.id.trim() ? section.id.trim() : `section-${index + 1}`,
+      title,
+      instruction,
+      format: asFormat(section.format),
+    };
+  });
+
+  return {
+    name,
+    description: typeof data.description === "string" ? data.description.trim() : "",
+    systemPrompt,
+    outputLanguage:
+      typeof data.outputLanguage === "string" && data.outputLanguage.trim()
+        ? data.outputLanguage.trim()
+        : "zh",
+    sections,
+  };
+}
+
+export function builtinDefaultsFor(name: string) {
+  return BUILTIN_TEMPLATES.find((template) => template.name === name) ?? null;
 }
