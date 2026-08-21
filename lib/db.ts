@@ -4,10 +4,12 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+type D1Binding = ConstructorParameters<typeof PrismaD1>[0];
+
 function createPrismaClient() {
   try {
     const { env } = getCloudflareContext();
-    const db = (env as { DB?: D1Database }).DB;
+    const db = (env as { DB?: D1Binding }).DB;
     if (db) {
       return new PrismaClient({
         adapter: new PrismaD1(db),

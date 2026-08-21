@@ -99,5 +99,5 @@ export async function extractAacFromMp4(
 
   if (codecSupported === false || chunks.length === 0) return null;
   onProgress?.(1);
-  return new File(chunks, file.name.replace(/\.[^.]+$/, "") + ".aac", { type: "audio/aac" });
+  return new File(chunks as BlobPart[], file.name.replace(/\.[^.]+$/, "") + ".aac", { type: "audio/aac" });
 }
