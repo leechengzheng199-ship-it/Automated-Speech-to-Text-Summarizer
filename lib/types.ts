@@ -29,9 +29,19 @@ export const QINIU_REGIONS = [
 
 export const MASKED_SECRET = "********";
 
+export const QINIU_UPLOAD_HOSTS: Record<string, string> = {
+  z0: "https://upload.qiniup.com",
+  z1: "https://upload-z1.qiniup.com",
+  z2: "https://upload-z2.qiniup.com",
+  na0: "https://upload-na0.qiniup.com",
+  as0: "https://upload-as0.qiniup.com",
+  "cn-east-2": "https://upload-cn-east-2.qiniup.com",
+};
+
 export const QINIU_LIMITS = {
-  maxFileBytes: 512 * 1024 * 1024,
-  maxDurationMs: 5 * 60 * 60 * 1000,
+  maxFileBytes: 2 * 1024 * 1024 * 1024 - 1,
+  maxDurationMs: 12 * 60 * 60 * 1000,
+  maxFileLabel: "2GB",
+  maxDurationLabel: "12 小时",
   supportedExtensions: [".wav", ".ogg", ".mp3", ".mp4", ".m4a", ".webm", ".aac", ".flac"],
-  nativeAsrExtensions: [".wav", ".ogg", ".mp3", ".mp4"],
 } as const;

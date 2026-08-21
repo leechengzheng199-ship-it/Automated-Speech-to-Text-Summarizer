@@ -15,10 +15,13 @@ type SettingsForm = {
   qiniuDomain: string;
   qiniuRegion: string;
   qiniuIsPrivate: boolean;
+  dashscopeApiKey: string;
+  dashscopeModel: string;
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
   qiniuConfigured: boolean;
+  dashscopeConfigured: boolean;
   llmConfigured: boolean;
 };
 
@@ -29,16 +32,20 @@ const EMPTY: SettingsForm = {
   qiniuDomain: "",
   qiniuRegion: "z0",
   qiniuIsPrivate: false,
+  dashscopeApiKey: "",
+  dashscopeModel: "paraformer-v2",
   llmBaseUrl: "",
   llmApiKey: "",
   llmModel: "",
   qiniuConfigured: false,
+  dashscopeConfigured: false,
   llmConfigured: false,
 };
 
 export function SettingsForm() {
   const [form, setForm] = useState<SettingsForm>(EMPTY);
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -48,7 +55,7 @@ export function SettingsForm() {
         return response.json();
       })
       .then((data: SettingsForm) => {
-        setForm(data);
+        setForm({ ...EMPTY, ...data, dashscopeModel: data.dashscopeModel || "paraformer-v2" });
         setStatus("idle");
       })
       .catch(() => {
@@ -73,7 +80,7 @@ export function SettingsForm() {
       });
       if (!response.ok) throw new Error("保存失败");
       const data = (await response.json()) as SettingsForm;
-      setForm(data);
+      setForm({ ...EMPTY, ...data, dashscopeModel: data.dashscopeModel || "paraformer-v2" });
       setStatus("saved");
       setMessage("已保存到本机 SQLite。密钥不会下发到浏览器明文。");
     } catch {
@@ -82,16 +89,32 @@ export function SettingsForm() {
     }
   }
 
-  const disabled = status === "loading" || status === "saving";
+  async function testParaformer() {
+    setTesting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/settings/test-paraformer", { method: "POST" });
+      const data = (await response.json()) as { ok?: boolean; message?: string };
+      setStatus(data.ok ? "saved" : "error");
+      setMessage(data.message || (data.ok ? "检测完成。" : "检测失败。"));
+    } catch {
+      setStatus("error");
+      setMessage("检测失败，请确认开发服务正在运行。");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const disabled = status === "loading" || status === "saving" || testing;
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>七牛云</CardTitle>
+          <CardTitle>七牛云对象存储</CardTitle>
           <CardDescription>
-            填写对象存储与长语音识别共用的 AccessKey / SecretKey。SecretKey 只存在服务端。
-            {form.qiniuConfigured ? " 当前已配置。" : " 当前尚未配置完整。"}
+            用于存放音频并生成外链。SecretKey 只存在服务端。
+            {form.qiniuConfigured ? " 当前存储配置已保存。" : " 当前尚未配置完整。"}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -149,8 +172,56 @@ export function SettingsForm() {
               onChange={(event) => update("qiniuIsPrivate", event.target.checked)}
               disabled={disabled}
             />
-            私有空间（转写时使用签名 URL）
+            私有空间（外链会带下载签名，供本机拉取后交给 Paraformer）
           </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>阿里云 Paraformer 转写</CardTitle>
+          <CardDescription>
+            使用
+            <a
+              className="mx-1 underline"
+              href="https://help.aliyun.com/zh/model-studio/paraformer-recorded-speech-recognition-restful-api"
+              target="_blank"
+              rel="noreferrer"
+            >
+              百炼录音文件识别
+            </a>
+            ，通过七牛外链异步转写。API Key 在
+            <a
+              className="mx-1 underline"
+              href="https://bailian.console.aliyun.com/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              阿里云百炼控制台
+            </a>
+            创建。
+            {form.dashscopeConfigured ? " 当前已配置。" : " 当前尚未配置。"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="DashScope API Key">
+            <Input
+              type="password"
+              value={form.dashscopeApiKey}
+              onChange={(event) => update("dashscopeApiKey", event.target.value)}
+              placeholder={form.dashscopeConfigured ? MASKED_SECRET : ""}
+              autoComplete="off"
+              disabled={disabled}
+            />
+          </Field>
+          <Field label="模型名">
+            <Input
+              value={form.dashscopeModel}
+              onChange={(event) => update("dashscopeModel", event.target.value)}
+              placeholder="paraformer-v2"
+              disabled={disabled}
+            />
+          </Field>
         </CardContent>
       </Card>
 
@@ -192,9 +263,17 @@ export function SettingsForm() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={disabled}>
           {status === "saving" ? "保存中…" : "保存配置"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled || !form.dashscopeConfigured}
+          onClick={testParaformer}
+        >
+          {testing ? "检测中…" : "检测转写权限"}
         </Button>
         {message ? (
           <p className={status === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>

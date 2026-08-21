@@ -1,21 +1,20 @@
 # 录音转写与个性化总结
 
-上传本地录音，在浏览器解析并压缩，经七牛云长语音识别转为文字，再按自定义模板生成结构化总结文档。
-
-当前仓库是可运行的应用骨架：页面、数据模型和设置读写已经接通，**实际上传、转写与 LLM 总结将在后续迭代接入**。
+上传本地录音后，文件会进七牛对象存储并生成外链，再交给阿里云 Paraformer 转写，最后按模板用 OpenAI 兼容模型生成 Markdown 总结。
 
 ## 技术栈
 
 - Next.js（App Router）+ TypeScript
 - Tailwind CSS + shadcn/ui
 - SQLite + Prisma（本机单库，无账号体系）
-- 计划接入：浏览器 ffmpeg.wasm、七牛 Kodo / LASR、OpenAI 兼容 LLM
+- 浏览器 ffmpeg.wasm、七牛 Kodo、阿里云百炼 Paraformer、OpenAI 兼容 LLM
 
 ## 环境要求
 
 - Node.js 20 或更高（建议 22+）
 - pnpm 9+（仓库 `packageManager` 为 pnpm 11）
-- 七牛云账号，并开通[长语音识别](https://developer.qiniu.com/dora/11175/long-speech-recognition)
+- 七牛云账号（对象存储，用于上传与外链）
+- 阿里云百炼 API Key，并开通 [Paraformer 录音文件识别](https://help.aliyun.com/zh/model-studio/paraformer-recorded-speech-recognition-restful-api)
 - 任意 OpenAI 兼容模型服务（DeepSeek、通义、OpenAI、Ollama 等），用于总结
 
 ## 启动
@@ -39,12 +38,17 @@ Copy-Item .env.example .env
 
 ## 设置页必填项
 
-七牛云：
+七牛云对象存储：
 
 - AccessKey / SecretKey
 - 存储空间 Bucket
 - 访问域名（公开空间用 CDN 域名；私有空间请勾选「私有空间」）
 - 存储区域
+
+阿里云转写：
+
+- DashScope API Key
+- 模型名（默认 `paraformer-v2`）
 
 总结模型：
 
@@ -52,7 +56,9 @@ Copy-Item .env.example .env
 - API Key
 - 模型名
 
-SecretKey 与 LLM API Key 不会以明文返回给浏览器；未改动时提交会保留原值。
+密钥不会以明文返回给浏览器；未改动时提交会保留原值。保存后可点「检测转写权限」确认百炼 API Key 可用。
+
+Paraformer 需要能从公网下载音频。私有空间会生成 24 小时签名外链；若转写报 `InvalidFile.DownloadFailed`，请检查域名、空间权限和外链是否可直接打开。
 
 ## 页面
 
@@ -61,13 +67,13 @@ SecretKey 与 LLM API Key 不会以明文返回给浏览器；未改动时提交
 | `/` | 工作台：选择音频、查看最近任务 |
 | `/jobs/[id]` | 任务进度、转写原文、总结文档 |
 | `/templates` | 内置与自定义总结结构 |
-| `/settings` | 七牛云与 LLM 配置 |
+| `/settings` | 七牛云、Paraformer 与 LLM 配置 |
 
 首次访问会自动写入 3 套内置模板：会议纪要、访谈整理、课程笔记。
 
-## 七牛限制（上传校验已按此实现）
+## 上传限制
 
-- 识别格式：wav、ogg、mp3、mp4（其他常见格式后续会先转成 mp3）
+- 识别格式：wav、ogg、mp3、mp4（其他常见格式会先转成 mp3）
 - 时长不超过 5 小时
 - 体积不超过 512MB
 - 转写为异步任务：提交后轮询 `taskId`（自建环境默认不用公网回调）

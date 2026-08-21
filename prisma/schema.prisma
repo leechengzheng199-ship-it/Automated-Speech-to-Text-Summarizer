@@ -8,18 +8,20 @@ datasource db {
 }
 
 model Settings {
-  id             String   @id @default("default")
-  qiniuAccessKey String   @default("")
-  qiniuSecretKey String   @default("")
-  qiniuBucket    String   @default("")
-  qiniuDomain    String   @default("")
-  qiniuRegion    String   @default("z0")
-  qiniuIsPrivate Boolean  @default(false)
-  llmBaseUrl     String   @default("")
-  llmApiKey      String   @default("")
-  llmModel       String   @default("")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default("default")
+  qiniuAccessKey   String   @default("")
+  qiniuSecretKey   String   @default("")
+  qiniuBucket      String   @default("")
+  qiniuDomain      String   @default("")
+  qiniuRegion      String   @default("z0")
+  qiniuIsPrivate   Boolean  @default(false)
+  dashscopeApiKey  String   @default("")
+  dashscopeModel   String   @default("paraformer-v2")
+  llmBaseUrl       String   @default("")
+  llmApiKey        String   @default("")
+  llmModel         String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Template {
@@ -42,7 +44,7 @@ model Job {
   durationMs   Int?
   kodoKey      String?
   audioUrl     String?
-  qiniuTaskId  String?
+  asrTaskId    String?
   status       String      @default("queued")
   errorMessage String?
   templateId   String?

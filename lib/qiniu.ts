@@ -1,7 +1,12 @@
-/**
- * Qiniu Kodo upload tokens and long-speech recognition (LASR).
- * Real AK/SK signing will be wired in a later iteration.
- */
+import qiniu from "qiniu";
+
+import {
+  describeNetworkError,
+  downloadProtocols,
+  hostFromDomain,
+  isNetworkFetchError,
+} from "@/lib/network";
+import { QINIU_LIMITS, QINIU_UPLOAD_HOSTS } from "@/lib/types";
 
 export type QiniuSettings = {
   accessKey: string;
@@ -14,32 +19,71 @@ export type QiniuSettings = {
 
 export function isQiniuConfigured(settings: QiniuSettings) {
   return Boolean(
-    settings.accessKey &&
-      settings.secretKey &&
-      settings.bucket &&
-      settings.domain,
+    settings.accessKey && settings.secretKey && settings.bucket && settings.domain,
   );
 }
 
-export function createUploadToken(_settings: QiniuSettings, _key: string): string {
-  throw new Error("七牛上传凭证尚未接入，请等待后续迭代。");
+function mac(settings: QiniuSettings) {
+  return new qiniu.auth.digest.Mac(settings.accessKey, settings.secretKey);
 }
 
-export function buildAudioUrl(_settings: QiniuSettings, _key: string): string {
-  throw new Error("七牛资源 URL 尚未接入，请等待后续迭代。");
+function buildAudioUrlWithProtocol(
+  settings: QiniuSettings,
+  key: string,
+  protocol: "http" | "https",
+) {
+  const domain = `${protocol}://${hostFromDomain(settings.domain)}`;
+  const manager = new qiniu.rs.BucketManager(mac(settings), new qiniu.conf.Config());
+  const deadline = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
+  return manager.privateDownloadUrl(domain, key, deadline);
 }
 
-export async function submitLasrTask(_params: {
-  settings: QiniuSettings;
-  audioUrl: string;
-  fileName: string;
-}): Promise<{ taskId: string }> {
-  throw new Error("七牛长语音识别尚未接入，请等待后续迭代。");
+export function getUploadHost(region: string) {
+  return QINIU_UPLOAD_HOSTS[region] ?? QINIU_UPLOAD_HOSTS.z0;
 }
 
-export async function queryLasrTask(_params: {
-  settings: QiniuSettings;
-  taskId: string;
-}): Promise<{ statusCode: number; statusText: string; resultText?: string; detail?: unknown }> {
-  throw new Error("七牛转写查询尚未接入，请等待后续迭代。");
+export function createUploadToken(settings: QiniuSettings, key: string) {
+  const putPolicy = new qiniu.rs.PutPolicy({
+    scope: `${settings.bucket}:${key}`,
+    expires: 3600,
+    fsizeLimit: QINIU_LIMITS.maxFileBytes,
+    returnBody: '{"key":$(key),"hash":$(etag),"size":$(fsize)}',
+  });
+  return putPolicy.uploadToken(mac(settings));
+}
+
+export function buildAudioUrl(settings: QiniuSettings, key: string) {
+  return buildAudioUrlWithProtocol(settings, key, downloadProtocols(settings.domain)[0]);
+}
+
+export async function downloadQiniuObject(settings: QiniuSettings, key: string) {
+  const protocols = downloadProtocols(settings.domain);
+  let lastNetworkError: unknown;
+
+  for (const [index, protocol] of protocols.entries()) {
+    const url = buildAudioUrlWithProtocol(settings, key, protocol);
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(
+          `无法从七牛下载音频（HTTP ${response.status}）。请确认 AccessKey 有权限，并检查测试域名是否过期或开启了防盗链。`,
+        );
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const fileName = key.split("/").pop() || "audio.bin";
+      return {
+        buffer,
+        fileName,
+        contentType: response.headers.get("content-type") || "application/octet-stream",
+      };
+    } catch (error) {
+      if (!isNetworkFetchError(error)) throw error;
+      lastNetworkError = error;
+      if (index === protocols.length - 1) {
+        throw new Error(`无法从七牛下载音频：${describeNetworkError(lastNetworkError)}`);
+      }
+    }
+  }
+
+  throw new Error(`无法从七牛下载音频：${describeNetworkError(lastNetworkError)}`);
 }

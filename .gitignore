@@ -48,3 +48,6 @@ next-env.d.ts
 /prisma/*.db-journal
 /prisma/*.db-wal
 /prisma/*.db-shm
+
+# ffmpeg.wasm copied from node_modules on postinstall
+/public/ffmpeg/

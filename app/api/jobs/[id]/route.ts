@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { prisma } from "@/lib/db";
+import { syncJob } from "@/lib/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const job = await prisma.job.findUnique({
-    where: { id },
-    include: { transcript: true, summary: true },
-  });
+  const job = await syncJob(id);
 
   if (!job) {
     return NextResponse.json({ error: "任务不存在。" }, { status: 404 });
