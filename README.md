@@ -85,5 +85,41 @@ pnpm dev          # 开发
 pnpm db:push      # 同步 Prisma schema 到 SQLite
 pnpm db:generate  # 生成 Prisma Client
 pnpm build        # 生产构建
+pnpm cf:build     # Cloudflare OpenNext 构建
 pnpm lint         # ESLint
 ```
+
+## 部署到 Cloudflare
+
+本项目使用 `@opennextjs/cloudflare`，**不能**选 `Next.js (Static HTML Export)`。
+
+### 构建设置
+
+| 字段 | 值 |
+| --- | --- |
+| 框架预设 | **Next.js** |
+| 构建命令 | `pnpm cf:build` |
+| 构建输出目录 | 留空（由 OpenNext 生成 Worker） |
+| 环境变量 `NODE_VERSION` | `22` |
+| 环境变量 `DATABASE_URL` | `file:./dev.db`（仅构建时 Prisma 生成用） |
+
+### D1 数据库（必做）
+
+Cloudflare 上没有本地磁盘，需使用 D1：
+
+```bash
+pnpm exec wrangler d1 create speech-summarizer
+```
+
+把返回的 `database_id` 写入 `wrangler.jsonc` 的 `database_id` 字段，然后初始化表结构：
+
+```bash
+pnpm exec wrangler d1 execute speech-summarizer --remote --file=./prisma/d1-init.sql
+```
+
+在 Cloudflare 控制台为项目绑定 D1，变量名 `DB`。
+
+### 常见构建失败
+
+- `could not determine executable to run`：未安装 `@opennextjs/cloudflare`，需拉取最新代码后重试。
+- 构建命令请用 `pnpm cf:build`，不要手写 `npx opennextjs-cloudflare`（未安装时会失败）。
