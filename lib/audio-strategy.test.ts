@@ -6,6 +6,7 @@ import {
   needsLocalPrepare,
   predictedOutputName,
   shouldCompressAudio,
+  shouldRecompressExtracted,
 } from "./audio-strategy.ts";
 
 test("videos extract audio instead of uploading the whole file", () => {
@@ -24,4 +25,10 @@ test("lossless and oversized compressed audio are compressed", () => {
   assert.equal(predictedOutputName("meeting.wav", "compress"), "meeting.m4a");
   assert.equal(shouldCompressAudio(5 * 1024 * 1024, 60_000), true);
   assert.equal(shouldCompressAudio(200_000, 60_000), false);
+});
+
+test("extracted tracks skip ffmpeg when already small or speech-like", () => {
+  assert.equal(shouldRecompressExtracted(2 * 1024 * 1024, 60 * 60_000), false);
+  assert.equal(shouldRecompressExtracted(25 * 1024 * 1024, null), true);
+  assert.equal(shouldRecompressExtracted(5 * 1024 * 1024, 30_000), true);
 });

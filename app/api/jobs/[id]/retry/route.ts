@@ -40,7 +40,7 @@ export async function POST(
   });
 
   try {
-    const started = await startTranscription(id);
+    const started = await startTranscription(id, { forceOss: true });
     return NextResponse.json(started);
   } catch (error) {
     const message = error instanceof Error ? error.message : "重新提交转写失败。";

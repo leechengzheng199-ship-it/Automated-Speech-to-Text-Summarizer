@@ -3,8 +3,13 @@ import type { Job, Summary, Transcript } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { generateSummary, isLlmConfigured } from "@/lib/llm";
 import { describeNetworkError } from "@/lib/network";
-import { queryParaformerTask, submitParaformerTask, uploadToDashscopeOss } from "@/lib/paraformer";
-import { downloadQiniuObject } from "@/lib/qiniu";
+import {
+  isParaformerFileForbidden,
+  queryParaformerTask,
+  submitParaformerTask,
+  uploadToDashscopeOss,
+} from "@/lib/paraformer";
+import { buildAudioUrl, downloadQiniuObject } from "@/lib/qiniu";
 import { getAppSettings } from "@/lib/settings";
 import { buildSummaryPrompt } from "@/lib/templates";
 import type { JobStatus, TemplateSection } from "@/lib/types";
@@ -15,6 +20,7 @@ export type JobWithRelations = Job & {
 };
 
 const inflight = new Map<string, Promise<JobWithRelations | null>>();
+const ossFallbackTried = new Set<string>();
 
 function asErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "未知错误";
@@ -24,7 +30,22 @@ function asErrorMessage(error: unknown) {
   return error.message;
 }
 
-export async function startTranscription(jobId: string) {
+async function submitViaOss(job: { id: string; fileName: string; kodoKey: string }) {
+  const settings = await getAppSettings();
+  const file = await downloadQiniuObject(settings.qiniu, job.kodoKey);
+  const ossUrl = await uploadToDashscopeOss({
+    settings: settings.dashscope,
+    fileName: job.fileName,
+    data: file.buffer,
+    contentType: file.contentType,
+  });
+  return submitParaformerTask({
+    settings: settings.dashscope,
+    audioUrl: ossUrl,
+  });
+}
+
+export async function startTranscription(jobId: string, options?: { forceOss?: boolean }) {
   const settings = await getAppSettings();
   if (!settings.dashscopeConfigured) {
     throw new Error("请先在设置页填写阿里云百炼 API Key。");
@@ -34,18 +55,21 @@ export async function startTranscription(jobId: string) {
     throw new Error("任务缺少已上传的音频文件。");
   }
 
-  const file = await downloadQiniuObject(settings.qiniu, job.kodoKey);
-  const ossUrl = await uploadToDashscopeOss({
-    settings: settings.dashscope,
-    fileName: job.fileName,
-    data: file.buffer,
-    contentType: file.contentType,
-  });
+  const audioUrl = job.audioUrl || buildAudioUrl(settings.qiniu, job.kodoKey);
+  let taskId: string;
 
-  const { taskId } = await submitParaformerTask({
-    settings: settings.dashscope,
-    audioUrl: ossUrl,
-  });
+  if (!options?.forceOss && audioUrl) {
+    try {
+      ({ taskId } = await submitParaformerTask({
+        settings: settings.dashscope,
+        audioUrl,
+      }));
+    } catch {
+      ({ taskId } = await submitViaOss({ id: job.id, fileName: job.fileName, kodoKey: job.kodoKey }));
+    }
+  } else {
+    ({ taskId } = await submitViaOss({ id: job.id, fileName: job.fileName, kodoKey: job.kodoKey }));
+  }
 
   return prisma.job.update({
     where: { id: jobId },
@@ -83,7 +107,7 @@ async function runSummary(job: JobWithRelations) {
 
   await prisma.job.update({
     where: { id: job.id },
-    data: { status: "summarizing", errorMessage: null },
+    data: { status: "summarizing", errorMessage: null, templateId: template.id },
   });
 
   const sections = JSON.parse(template.sections) as TemplateSection[];
@@ -114,6 +138,11 @@ async function runSummary(job: JobWithRelations) {
     },
     update: {
       templateId: template.id,
+      templateSnapshot: JSON.stringify({
+        name: template.name,
+        systemPrompt: template.systemPrompt,
+        sections,
+      }),
       markdown: result.markdown,
       rawOutput: result.rawOutput,
     },
@@ -124,6 +153,56 @@ async function runSummary(job: JobWithRelations) {
     data: { status: "done", errorMessage: null },
     include: { transcript: true, summary: true },
   });
+}
+
+export async function regenerateSummary(jobId: string, templateId?: string | null) {
+  const current = inflight.get(jobId);
+  if (current) return current;
+
+  const pending = (async (): Promise<JobWithRelations | null> => {
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: { transcript: true, summary: true },
+    });
+    if (!job) return null;
+    if (!job.transcript?.resultText?.trim()) {
+      throw new Error("还没有转写原文，无法生成总结。");
+    }
+
+    const nextTemplateId = templateId?.trim() || job.templateId;
+    const withTemplate = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        templateId: nextTemplateId,
+        status: "summarizing",
+        errorMessage: null,
+      },
+      include: { transcript: true, summary: true },
+    });
+
+    return runSummary(withTemplate);
+  })()
+    .catch(async (error) => {
+      if (error instanceof Error && error.message.includes("还没有转写原文")) {
+        throw error;
+      }
+      const latest = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { transcript: true, summary: true },
+      });
+      if (!latest) return null;
+      return prisma.job.update({
+        where: { id: jobId },
+        data: { status: "failed", errorMessage: asErrorMessage(error) },
+        include: { transcript: true, summary: true },
+      });
+    })
+    .finally(() => {
+      if (inflight.get(jobId) === pending) inflight.delete(jobId);
+    });
+
+  inflight.set(jobId, pending);
+  return pending;
 }
 
 async function syncJobInner(jobId: string): Promise<JobWithRelations | null> {
@@ -171,6 +250,14 @@ async function syncJobInner(jobId: string): Promise<JobWithRelations | null> {
     }
 
     if (result.status === "FAILED") {
+      if (
+        isParaformerFileForbidden(result.errorCode, result.errorMessage) &&
+        job.kodoKey &&
+        !ossFallbackTried.has(job.id)
+      ) {
+        ossFallbackTried.add(job.id);
+        return startTranscription(job.id, { forceOss: true });
+      }
       return prisma.job.update({
         where: { id: job.id },
         data: {
@@ -182,7 +269,7 @@ async function syncJobInner(jobId: string): Promise<JobWithRelations | null> {
     }
   }
 
-  if (status === "summarizing" && job.transcript && !job.summary) {
+  if (status === "summarizing" && job.transcript) {
     return runSummary(job);
   }
 

@@ -68,9 +68,13 @@ function describeError(status: number, payload: { code?: string; message?: strin
   return `Paraformer 接口 HTTP ${status}${payload.code ? `（${payload.code}）` : ""}${detail ? `：${detail}` : ""}`;
 }
 
+export function isParaformerFileForbidden(code?: string, message?: string) {
+  return code === "FILE_403_FORBIDDEN" || /FILE_403/.test(message || "");
+}
+
 function describeTaskFailure(code?: string, message?: string) {
-  if (code === "FILE_403_FORBIDDEN" || /FILE_403/.test(message || "")) {
-    return "阿里云无法直接读取七牛外链（FILE_403_FORBIDDEN）。请点「重新提交转写」，系统会改为本机拉取后再交给 Paraformer。";
+  if (isParaformerFileForbidden(code, message)) {
+    return "阿里云无法直接读取七牛外链（FILE_403_FORBIDDEN），将改为本机拉取后再提交。";
   }
   return message || code || "Paraformer 转写失败。";
 }
@@ -224,6 +228,7 @@ export async function queryParaformerTask(params: {
   durationMs?: number;
   detail?: unknown;
   errorMessage?: string;
+  errorCode?: string;
 }> {
   const result = await dashscopeJson<QueryResponse>(
     params.settings.apiKey,
@@ -241,6 +246,7 @@ export async function queryParaformerTask(params: {
     return {
       status: "FAILED",
       errorMessage: describeTaskFailure(first?.code, first?.message || result.message),
+      errorCode: first?.code,
     };
   }
 

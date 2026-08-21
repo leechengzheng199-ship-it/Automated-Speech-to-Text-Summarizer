@@ -1,5 +1,5 @@
 const BLOCK_SIZE = 4 * 1024 * 1024;
-const CONCURRENCY = 4;
+const CONCURRENCY = 8;
 
 function urlSafeBase64(text: string) {
   const bytes = new TextEncoder().encode(text);

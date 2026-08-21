@@ -16,6 +16,15 @@ export function shouldCompressAudio(fileSize: number, durationMs: number | null 
   return false;
 }
 
+/** After video demux, skip ffmpeg.wasm if the track is already small / speech-bitrate. */
+export function shouldRecompressExtracted(fileSize: number, durationMs: number | null = null) {
+  if (fileSize > 20 * 1024 * 1024) return true;
+  if (durationMs && durationMs >= 1000) {
+    return fileSize / (durationMs / 1000) > 8000;
+  }
+  return fileSize > 12 * 1024 * 1024;
+}
+
 export function getPrepareAction(fileName: string, fileSize = 0, durationMs: number | null = null): PrepareAction {
   const ext = getExtension(fileName);
   if ((VIDEO_CONTAINER_EXTENSIONS as readonly string[]).includes(ext)) return "extract";

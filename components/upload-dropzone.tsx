@@ -102,18 +102,18 @@ export function UploadDropzone({
     try {
       const predictedName = predictedOutputName(file.name, action);
       setMessage("正在准备音频…");
-      const durationPromise = readMediaDurationMs(file);
-      const preparePromise = durationPromise.then((durationMs) => {
+      const durationPromise = readMediaDurationMs(file).then((durationMs) => {
         if (durationMs && durationMs > QINIU_LIMITS.maxDurationMs) {
           throw new Error(`音频超过 ${QINIU_LIMITS.maxDurationLabel} 限制。`);
         }
-        return prepareUploadFile(
-          file,
-          setMessage,
-          (ratio) => setProgress(Math.round(ratio * 70)),
-          durationMs,
-        );
+        return durationMs;
       });
+      const preparePromise = prepareUploadFile(
+        file,
+        setMessage,
+        (ratio) => setProgress(Math.round(ratio * 70)),
+        durationPromise,
+      );
       const tokenPromise = fetchUploadToken(predictedName);
       const [uploadFile, tokenBody] = await Promise.all([preparePromise, tokenPromise]);
       const token =
@@ -159,7 +159,7 @@ export function UploadDropzone({
       <CardHeader>
         <CardTitle>上传录音</CardTitle>
         <CardDescription>
-          选择本地音频或视频。视频会抽出音轨，再压成 16kHz 单声道 24kbps 语音后再上传。
+          选择本地音频或视频。视频会抽出音轨；音轨已经较小则直接上传，否则再压成语音码率。
           {!qiniuConfigured ? " 请先到设置页填写七牛云配置。" : null}
           {qiniuConfigured && !dashscopeConfigured ? " 请先到设置页填写阿里云百炼 API Key。" : null}
           {qiniuConfigured && dashscopeConfigured && !llmConfigured

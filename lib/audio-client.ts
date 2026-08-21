@@ -7,6 +7,7 @@ import {
   getPrepareAction,
   isIsoBmffContainer,
   needsLocalPrepare,
+  shouldRecompressExtracted,
   type PrepareAction,
 } from "@/lib/audio-strategy";
 
@@ -65,7 +66,7 @@ async function loadFfmpeg() {
 }
 
 export function preloadFfmpeg(fileName: string, fileSize = 0) {
-  if (getPrepareAction(fileName, fileSize) !== "direct") {
+  if (getPrepareAction(fileName, fileSize) === "compress") {
     void loadFfmpeg();
   }
 }
@@ -165,38 +166,46 @@ function canRecompress(file: File) {
   return file.size <= FFMPEG_SAFE_BYTES;
 }
 
+async function resolveDuration(durationMs?: number | null | Promise<number | null>) {
+  if (durationMs == null) return null;
+  return durationMs;
+}
+
 export async function prepareUploadFile(
   file: File,
   onLog?: (message: string) => void,
   onProgress?: (ratio: number) => void,
-  durationMs?: number | null,
+  durationMs?: number | null | Promise<number | null>,
 ): Promise<File> {
-  const action: PrepareAction = getPrepareAction(file.name, file.size, durationMs ?? null);
-
-  if (action === "direct") {
-    onProgress?.(1);
-    return file;
-  }
+  const sizeOnlyAction: PrepareAction = getPrepareAction(file.name, file.size);
 
   try {
-    if (action === "extract") {
+    if (sizeOnlyAction === "extract") {
       let extracted: File | null = null;
       if (isIsoBmffContainer(file.name)) {
         onLog?.("正在从视频中提取音轨…");
-        extracted = await extractAacFromMp4(file, (ratio) => onProgress?.(ratio * 0.55));
+        extracted = await extractAacFromMp4(file, (ratio) => onProgress?.(ratio * 0.7));
       }
+      const duration = await resolveDuration(durationMs);
       if (!extracted && canRecompress(file)) {
-        extracted = await remuxAudioTrack(file, onLog, (ratio) => onProgress?.(ratio * 0.55));
+        extracted = await remuxAudioTrack(file, onLog, (ratio) => onProgress?.(ratio * 0.7));
       }
       if (!extracted) {
         throw new Error("无法从视频中提取音轨。");
       }
-      if (canRecompress(extracted)) {
-        return compressToSpeechAac(extracted, onLog, (ratio) => onProgress?.(0.55 + ratio * 0.45));
+      if (canRecompress(extracted) && shouldRecompressExtracted(extracted.size, duration)) {
+        return compressToSpeechAac(extracted, onLog, (ratio) => onProgress?.(0.7 + ratio * 0.3));
       }
-      onLog?.("音轨较大，已跳过二次压缩。");
+      onLog?.("音轨已足够小，跳过二次压缩。");
       onProgress?.(1);
       return extracted;
+    }
+
+    const duration = await resolveDuration(durationMs);
+    const action: PrepareAction = getPrepareAction(file.name, file.size, duration);
+    if (action === "direct") {
+      onProgress?.(1);
+      return file;
     }
 
     if (!canRecompress(file)) {
