@@ -93,15 +93,18 @@ pnpm lint         # ESLint
 
 本项目使用 `@opennextjs/cloudflare`，**不能**选 `Next.js (Static HTML Export)`。
 
-### 构建设置
+### 构建设置（Workers Builds）
 
 | 字段 | 值 |
 | --- | --- |
-| 框架预设 | **Next.js** |
-| 构建命令 | `pnpm cf:build` |
-| 构建输出目录 | 留空（由 OpenNext 生成 Worker） |
+| 框架预设 | **Next.js**（不要选 Static HTML Export） |
+| **构建命令** | `pnpm cf:build`（不要用 `pnpm run build`） |
+| **部署命令** | `npx wrangler deploy` |
+| 构建输出目录 | 留空 |
 | 环境变量 `NODE_VERSION` | `22` |
 | 环境变量 `DATABASE_URL` | `file:./dev.db`（仅构建时 Prisma 生成用） |
+
+`pnpm run build` 只会跑普通 Next.js，不会生成 `.open-next/`，随后 `wrangler deploy` 就会报：`Could not find compiled Open Next config`。
 
 ### D1 数据库（必做）
 
