@@ -1,12 +1,3 @@
-const fs = require("fs");
-const path = require("path");
-
-const coreJs = require.resolve("@ffmpeg/core");
-const umdDir = path.dirname(coreJs);
-const destDir = path.join(__dirname, "..", "public", "ffmpeg");
-
-fs.mkdirSync(destDir, { recursive: true });
-for (const file of ["ffmpeg-core.js", "ffmpeg-core.wasm"]) {
-  fs.copyFileSync(path.join(umdDir, file), path.join(destDir, file));
-}
-
+// ffmpeg.wasm is loaded from jsDelivr CDN (see lib/audio-client.ts).
+// Do not copy the ~31MB wasm into public/ — Cloudflare Workers assets max out at 25 MiB.
+console.log("skip local ffmpeg copy; using CDN @ffmpeg/core@0.12.10");

@@ -43,23 +43,15 @@ let ffmpegLock: Promise<void> = Promise.resolve();
 async function loadFfmpeg() {
   if (!ffmpegLoader) {
     ffmpegLoader = (async () => {
-      const base = `${window.location.origin}/ffmpeg`;
-      try {
-        const ffmpeg = new FFmpeg();
-        await ffmpeg.load({
-          coreURL: `${base}/ffmpeg-core.js`,
-          wasmURL: `${base}/ffmpeg-core.wasm`,
-        });
-        return ffmpeg;
-      } catch {
-        const ffmpeg = new FFmpeg();
-        const { toBlobURL } = await import("@ffmpeg/util");
-        await ffmpeg.load({
-          coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
-          wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
-        });
-        return ffmpeg;
-      }
+      // Load from CDN so Cloudflare Workers assets stay under the 25 MiB limit.
+      const base = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+      const ffmpeg = new FFmpeg();
+      const { toBlobURL } = await import("@ffmpeg/util");
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+      return ffmpeg;
     })();
   }
   return ffmpegLoader;
