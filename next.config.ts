@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@prisma/client", "qiniu"],
+  serverExternalPackages: ["@prisma/client", "qiniu", "proxy-agent", "urllib"],
   transpilePackages: ["mp4box"],
   agentRules: false,
 };
